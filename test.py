@@ -142,21 +142,31 @@ class labelProducerThread(threading.Thread):
 
     def run(self):
         while True:
-            tag = popLabelsResult()
-            labelList = tag["labelAnnotations"]
-            webList = tag["webDetection"]["webEntities"]
-            if not label_q_result.full():
-                headWears = list(filter(lambda x: re.match(r".*cap.*|.*hat.*|.*helmet.*|.*head.*", x["description"], re.IGNORECASE), labelList))
-                headWearsList = [headWear["description"] for headWear in headWears]
-                eyeWears = list(filter(lambda x: re.match(r".*glasses.*", x["description"], re.IGNORECASE), labelList))
-                eyeWearsList = [eyeWear["description"] for eyeWear in eyeWears]
-                covers = list(filter(lambda x: re.match(r".*cover.*|.*mask.*|.*protective.*", x["description"], re.IGNORECASE), labelList))
-                coversList = [cover["description"] for cover in covers]
-                weapons = list(filter(lambda x: re.match(r".*sword.*|.*knife.*|.*gun.*|.*rifle.*|.*arm.*", x["description"], re.IGNORECASE), labelList))
-                weaponsList = [weapon["description"] for weapon in weapons]
-                tagsList = [web["description"] for web in webList]
-                result = [headWearsList,eyeWearsList,coversList,weaponsList,tagsList]
-                label_q_result.put(result)
+            try:
+                message = '{"Alert":0}'
+                tag = popLabelsResult()
+                labelList = tag["labelAnnotations"]
+                webList = tag["webDetection"]["webEntities"]
+                if not label_q_result.full():
+                    tagsList = [web["description"] for web in webList]
+                    headWearsList = list(filter(lambda x: re.match(r".*cap.*|.*hat.*|.*helmet.*|.*head.*", x, re.IGNORECASE), tagsList))
+                    eyeWearsList = list(filter(lambda x: re.match(r".*glasses.*", x, re.IGNORECASE), tagsList))
+                    coversList = list(filter(lambda x: re.match(r".*cover.*|.*mask.*|.*protective.*", x, re.IGNORECASE), tagsList))
+                    riskList = list(filter(lambda x: re.match(r".*mask.*|.*burglary.*|.*theft.*|.*crime.*|.*sword.*|.*knife.*|.*gun.*|.*rifle.*|.*arm.*", x, re.IGNORECASE), tagsList))
+
+                    if len(riskList) > 0:
+                        message = '{"Alert":1}'
+                    else:
+                        message = '{"Alert":0}'
+                    requests.post(
+                        url='https://d168a650.ngrok.io/robberyDetection/api/v1.0/notify',
+                        headers={'Content-Type': 'application/json'},
+                        data=message)
+                    result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
+                    label_q_result.put(result)
+            except Exception as e:
+                print(e)
+                continue
         return
 
 class azProducerThread(threading.Thread):
@@ -304,13 +314,13 @@ class ConsumerThread(threading.Thread):
                 headWear = "Headwear : " + str(labels[0]) if len(labels) > 0 else "Headwear:"
                 eyeWear = "Eyewear : " + str(labels[1]) if len(labels) > 0 else "Eyewear:"
                 cover = "Cover : " + str(labels[2]) if len(labels) > 0 else "Cover:"
-                weapon = "Weapon : " + str(labels[3]) if len(labels) > 0 else "Weapon:"
+                weapon = "Risk : " + str(labels[3]) if len(labels) > 0 else "Risk:"
                 tag = "Tag : " + str(labels[4]) if len(labels) > 0 else "Tag : "
                 cv2.putText(img, headWear, (10, 20), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
                 cv2.putText(img, eyeWear, (10, 35), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
                 cv2.putText(img, cover, (10, 50), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
                 cv2.putText(img, weapon, (10, 65), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
-                cv2.putText(img, tag, (10, SIZE[1] - 25), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
+                cv2.putText(img, tag, (10, SIZE[1] - 25), font, 0.5, (0, 255, 0), 1, cv2.LINE_AA)
                 #Face
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
                 faces = face_cascade.detectMultiScale(gray, 1.3, 5)
