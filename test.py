@@ -12,6 +12,7 @@ import json
 from pygame.locals import *
 import re
 import matplotlib.pyplot as plt
+import base64
 
 face_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haarcascade_frontalface_default.xml')
 eye_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haarcascade_eye.xml')
@@ -152,16 +153,19 @@ class labelProducerThread(threading.Thread):
                     headWearsList = list(filter(lambda x: re.match(r".*cap.*|.*hat.*|.*helmet.*|.*head.*", x, re.IGNORECASE), tagsList))
                     eyeWearsList = list(filter(lambda x: re.match(r".*glasses.*", x, re.IGNORECASE), tagsList))
                     coversList = list(filter(lambda x: re.match(r".*cover.*|.*mask.*|.*protective.*", x, re.IGNORECASE), tagsList))
-                    riskList = list(filter(lambda x: re.match(r".*mask.*|.*burglary.*|.*theft.*|.*crime.*|.*sword.*|.*knife.*|.*gun.*|.*rifle.*|.*arm.*", x, re.IGNORECASE), tagsList))
+                    riskList = list(filter(lambda x: re.match(r".*robbery.*|.*mask.*|.*burglary.*|.*theft.*|.*crime.*|.*sword.*|.*knife.*|.*gun.*|.*rifle.*|.*pistol.*|.*firearm.*|.*revolver.*", x, re.IGNORECASE), tagsList))
 
                     if len(riskList) > 0:
-                        message = '{"Alert":1}'
+                        frame = popGcFrame()
+                        image = str(frame,"utf-8")
+                        message = {"Alert":1,"Image":image}
                     else:
-                        message = '{"Alert":0}'
+                        message = {"Alert":0}
+                    messageJson = json.dumps(message)
                     requests.post(
-                        url='https://d168a650.ngrok.io/robberyDetection/api/v1.0/notify',
+                        url='https://2bd59b9e.ngrok.io/robberyDetection/api/v1.0/notify',
                         headers={'Content-Type': 'application/json'},
-                        data=message)
+                        data=messageJson)
                     result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
                     label_q_result.put(result)
             except Exception as e:
@@ -284,6 +288,11 @@ class ConsumerThread(threading.Thread):
                 if (frameCount % FPS) == 0:
                     img_save = pygame.surfarray.array3d(screen_save)
                     saver = Image.fromarray(img_save)
+                    #byteTest = saver.tobytes()
+                    #sizeTest = saver.size
+                    #modeTest = saver.mode
+                    #testImageLoad = Image.frombytes(modeTest, sizeTest, byteTest)
+                    #testImageLoad.save("./test.png")
                     az_byte_io = BytesIO()
                     gc_byte_io = BytesIO()
                     saver.save(az_byte_io, "PNG")
@@ -293,6 +302,12 @@ class ConsumerThread(threading.Thread):
                     # putGcFrame(base64.b64encode(test))
                     saver.save(gc_byte_io, "PNG")
                     gc_byte_io.seek(0)
+                    #testRead = gc_byte_io.read()
+                    #testRead64 = base64.b64encode(testRead)
+                    #testDec64 = base64.b64decode(testRead64)
+                    #testImageBytesIO = BytesIO(testDec64)
+                    #testImageLoad = Image.open(testImageBytesIO)
+                    #testImageLoad.save("./test2.png")
                     putGcFrame(base64.b64encode(gc_byte_io.read()))
 
                 if not az_q_result.empty():
