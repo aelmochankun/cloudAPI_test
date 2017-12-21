@@ -142,6 +142,7 @@ class labelProducerThread(threading.Thread):
         self.name = name
 
     def run(self):
+        alert = False
         while True:
             try:
                 message = '{"Alert":0}'
@@ -156,14 +157,19 @@ class labelProducerThread(threading.Thread):
                     riskList = list(filter(lambda x: re.match(r".*robbery.*|.*mask.*|.*burglary.*|.*theft.*|.*crime.*|.*sword.*|.*knife.*|.*gun.*|.*rifle.*|.*pistol.*|.*firearm.*|.*revolver.*", x, re.IGNORECASE), tagsList))
 
                     if len(riskList) > 0:
-                        frame = popGcFrame()
-                        image = str(frame,"utf-8")
-                        message = {"Alert":1,"Image":image}
+                        if alert == False:
+                            alert = True
+                            frame = popGcFrame()
+                            image = str(frame,"utf-8")
+                            message = {"Alert":1,"Image":image,"Risk":str(riskList)}
+                        else:
+                            message = {"Alert": 0}
                     else:
+                        alert = False
                         message = {"Alert":0}
                     messageJson = json.dumps(message)
                     requests.post(
-                        url='https://2bd59b9e.ngrok.io/robberyDetection/api/v1.0/notify',
+                        url='https://dd2c252e.ngrok.io/robberyDetection/api/v1.0/notify',
                         headers={'Content-Type': 'application/json'},
                         data=messageJson)
                     result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
