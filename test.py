@@ -20,6 +20,7 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 
 DEVICE = '/dev/video0'
 SIZE = (640, 480)
+#SIZE = (1280,720)
 
 GC_PROB_ENUM = {'VERY_UNLIKELY':0,'UNLIKELY':1,'POSSIBLE':2,'LIKELY':3,'VERY_LIKELY':4}
 
@@ -148,6 +149,7 @@ class labelProducerThread(threading.Thread):
                 message = '{"Alert":0}'
                 tag = popLabelsResult()
                 labelList = tag["labelAnnotations"]
+                image = tag["image"]
                 webList = tag["webDetection"]["webEntities"]
                 if not label_q_result.full():
                     tagsList = [web["description"] for web in webList]
@@ -159,7 +161,7 @@ class labelProducerThread(threading.Thread):
                     if len(riskList) > 0:
                         if alert == False:
                             alert = True
-                            frame = popGcFrame()
+                            frame = image
                             image = str(frame,"utf-8")
                             message = {"Alert":1,"Image":image,"Risk":str(riskList)}
                         else:
@@ -169,7 +171,7 @@ class labelProducerThread(threading.Thread):
                         message = {"Alert":0}
                     messageJson = json.dumps(message)
                     requests.post(
-                        url='https://dd2c252e.ngrok.io/robberyDetection/api/v1.0/notify',
+                        url='https://10f2621b.ngrok.io/robberyDetection/api/v1.0/notify',
                         headers={'Content-Type': 'application/json'},
                         data=messageJson)
                     result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
@@ -241,6 +243,7 @@ class gcProducerThread(threading.Thread):
                         headers={'Content-Type': 'application/json'},
                         data=json_dump)
                     data = response.json()
+                    data["image"] = frame
                     #print(data['responses'][0]['faceAnnotations'][0])
                 except Exception as e:
                     print("[Errno {0}] {1}".format(e.errno, e.strerror))
@@ -256,8 +259,7 @@ class gcProducerThread(threading.Thread):
         return
 
 class ConsumerThread(threading.Thread):
-    DEVICE = '/dev/video0'
-    SIZE = (640, 480)
+
     def __init__(self, group=None, target=None, name=None,
                  args=(), kwargs=None, verbose=None):
         super(ConsumerThread, self).__init__()
@@ -265,8 +267,8 @@ class ConsumerThread(threading.Thread):
         self.name = name
         pygame.init()
         pygame.camera.init()
-        self.display = pygame.display.set_mode(self.SIZE, 0)
-        self.camera = pygame.camera.Camera(self.DEVICE, self.SIZE)
+        self.display = pygame.display.set_mode(SIZE, 0)
+        self.camera = pygame.camera.Camera(DEVICE, SIZE)
         return
 
     def run(self):
@@ -279,9 +281,9 @@ class ConsumerThread(threading.Thread):
         eyeWearsList = []
         labels = []
         while self.capture:
-            time.sleep(1. / FPS)
             try:
-                screen = pygame.surface.Surface(self.SIZE, 0, self.display)
+                time.sleep(1. / FPS)
+                screen = pygame.surface.Surface(SIZE, 0, self.display)
                 screen = self.camera.get_image(screen)
                 screen_save = pygame.transform.rotate(screen,90)
                 screen_save = pygame.transform.flip(screen_save, False, True)
@@ -329,6 +331,7 @@ class ConsumerThread(threading.Thread):
                                   + ' : ' + str(gc_q_result.qsize()) + ' items in gc_q_result')
                     #Context
                     labelList = gcItem["responses"][0]
+                    labelList["image"] = gcItem["image"]
                     putLabels(labelList)
                 if not label_q_result.empty():
                     labels = label_q_result.get()
@@ -405,10 +408,9 @@ class ConsumerThread(threading.Thread):
                                         cv2.rectangle(img, (x-w, y), (x, y + h), (255, 0, 255), 2)
                                     index += 1
 
-                    if frameCount <= FPS:
-                        frameCount += 1
-                    else:
-                        frameCount = 1
+                    #if frameCount <= FPS:
+                    #else:
+                    #    frameCount = 1
                 else:
                     label = "Identifying...."
                     with az_q_frame.mutex:
@@ -422,7 +424,7 @@ class ConsumerThread(threading.Thread):
                     azP.defFirst(True)
                     azItem = None
                     gcItem = None
-                    frameCount = 0
+                    #frameCount = 0
                 pygame.surfarray.blit_array(screen, img)
                 screen = pygame.transform.flip(screen, False, True)
                 screen = pygame.transform.rotate(screen,-90)
@@ -431,6 +433,7 @@ class ConsumerThread(threading.Thread):
                 for event in pygame.event.get():
                         if event.type == KEYDOWN:
                                 capture = False
+                frameCount += 1
             except Exception as e:
                 print(e)
                 continue
