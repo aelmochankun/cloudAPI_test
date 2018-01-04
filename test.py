@@ -18,7 +18,7 @@ face_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haar
 eye_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haarcascade_eye.xml')
 font = cv2.FONT_HERSHEY_SIMPLEX
 
-DEVICE = '/dev/video0'
+DEVICE = '/dev/video1'
 SIZE = (640, 480)
 #SIZE = (1280,720)
 
@@ -71,8 +71,8 @@ gCloud_Vision_Req = {
 logging.basicConfig(level=logging.DEBUG,
                     format='(%(threadName)-9s) %(message)s', )
 
-BUF_SIZE = 100
-FPS = 25
+BUF_SIZE = 2
+FPS = 75
 az_q_frame = Queue.Queue(BUF_SIZE)
 gc_q_frame = Queue.Queue(BUF_SIZE)
 az_q_result = Queue.Queue(BUF_SIZE)
@@ -85,6 +85,11 @@ def putAzFrame(frame):
         az_q_frame.put(frame)
         #logging.debug('Putting ' + str(frame)
         #              + ' : ' + str(q_frame.qsize()) + ' items in q_frame')
+    else:
+        with az_q_frame.mutex:
+            az_q_frame.queue.clear()
+        with az_q_result.mutex:
+            az_q_result.queue.clear()
     return 0
 
 def popAzFrame():
@@ -103,6 +108,11 @@ def putGcFrame(frame):
         gc_q_frame.put(frame)
         #logging.debug('Putting ' + str(frame)
         #              + ' : ' + str(q_frame.qsize()) + ' items in q_frame')
+    else:
+        with gc_q_frame.mutex:
+            gc_q_frame.queue.clear()
+        with gc_q_result.mutex:
+            gc_q_result.queue.clear()
     return 0
 
 def popGcFrame():
@@ -121,9 +131,14 @@ def putLabels(labels):
         label_q.put(labels)
         #logging.debug('Putting ' + str(frame)
         #              + ' : ' + str(q_frame.qsize()) + ' items in q_frame')
+    else:
+        with label_q.mutex:
+            label_q.queue.clear()
+        with label_q_result.mutex:
+            label_q_result.queue.clear()
     return 0
 
-def popLabelsResult():
+def popLabels():
     frame = None
     if not label_q.empty():
         result = label_q.get()
@@ -147,7 +162,7 @@ class labelProducerThread(threading.Thread):
         while True:
             try:
                 message = '{"Alert":0}'
-                tag = popLabelsResult()
+                tag = popLabels()
                 labelList = tag["labelAnnotations"]
                 image = tag["image"]
                 webList = tag["webDetection"]["webEntities"]
@@ -171,7 +186,7 @@ class labelProducerThread(threading.Thread):
                         message = {"Alert":0}
                     messageJson = json.dumps(message)
                     requests.post(
-                        url='https://10f2621b.ngrok.io/robberyDetection/api/v1.0/notify',
+                        url='https://20f0036b.ngrok.io/robberyDetection/api/v1.0/notify',
                         headers={'Content-Type': 'application/json'},
                         data=messageJson)
                     result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
@@ -413,14 +428,6 @@ class ConsumerThread(threading.Thread):
                     #    frameCount = 1
                 else:
                     label = "Identifying...."
-                    with az_q_frame.mutex:
-                        az_q_frame.queue.clear()
-                    with gc_q_frame.mutex:
-                        gc_q_frame.queue.clear()
-                    with az_q_result.mutex:
-                        az_q_result.queue.clear()
-                    with gc_q_result.mutex:
-                        gc_q_result.queue.clear()
                     azP.defFirst(True)
                     azItem = None
                     gcItem = None
