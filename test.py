@@ -13,6 +13,10 @@ from pygame.locals import *
 import re
 import matplotlib.pyplot as plt
 import base64
+import requests
+import json
+from datetime import datetime as dt
+import time as time
 
 face_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haarcascade_frontalface_default.xml')
 eye_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haarcascade_eye.xml')
@@ -30,7 +34,8 @@ headers = {
 
     # NOTE: Replace the "Ocp-Apim-Subscription-Key" value with a valid subscription key.
     #Yong's key:'Ocp-Apim-Subscription-Key': '87443556668c4ad89ce30887acd834f6',
-    'Ocp-Apim-Subscription-Key': '5938ac171ad44c6f9efa52129bd61330',
+    #Ae'Ocp-Apim-Subscription-Key': '5938ac171ad44c6f9efa52129bd61330',
+    'Ocp-Apim-Subscription-Key':'bbfdd063ee5949f49127ee293ddc6cc9',
 }
 params = {
     # Request parameters. All of them are optional.
@@ -79,6 +84,33 @@ az_q_result = Queue.Queue(BUF_SIZE)
 gc_q_result = Queue.Queue(BUF_SIZE)
 label_q = Queue.Queue(BUF_SIZE)
 label_q_result = Queue.Queue(BUF_SIZE)
+
+def sendToElasticsearch(ids,gender,age, emotion,is_Update):
+    headers = {'Content-type': 'application/json'}
+    index = 0
+    bulk_Req = ""
+    now = dt.now()
+    date = "%d-%d-%d %d:%d:%d"%(now.year,now.month,now.day,now.hour,now.minute,now.second)
+    if( len(ids) != 0 ):
+        if is_Update == False:
+            for id in ids:
+                faceId = { "create" : { "_id" : id}}
+                data = {"capture_date":date}
+                bulk_Req += json.dumps(faceId) + "\n" + json.dumps(data) + "\n"
+                index +=1
+        else:
+            for id in ids:
+                faceId = { "update" : { "_id" : id}}
+                data = {"capture_date":date}
+                if len(gender)!=0:
+                    data["gender"] = gender[index]
+                    data["age"] = age[index]
+                if len(emotion)!=0:
+                    data["emotion"] = emotion[index]
+                data = {"doc":data}
+                bulk_Req += json.dumps(faceId) + "\n" + json.dumps(data) + "\n"
+                index +=1
+    req = requests.post("http://localhost:9200/description/face/_bulk", data=bulk_Req, headers=headers)
 
 def putAzFrame(frame):
     if not az_q_frame.full():
@@ -186,7 +218,7 @@ class labelProducerThread(threading.Thread):
                         message = {"Alert":0}
                     messageJson = json.dumps(message)
                     requests.post(
-                        url='https://20f0036b.ngrok.io/robberyDetection/api/v1.0/notify',
+                        url='https://309d5021.ngrok.io/robberyDetection/api/v1.0/notify',
                         headers={'Content-Type': 'application/json'},
                         data=messageJson)
                     result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
@@ -215,7 +247,8 @@ class azProducerThread(threading.Thread):
                 try:
                     response = requests.post(
                         #url='https://westcentralus.api.cognitive.microsoft.com/vision/v1.0/analyze',
-                        url='https://westcentralus.api.cognitive.microsoft.com/face/v1.0/detect',
+                        #url='https://westcentralus.api.cognitive.microsoft.com/face/v1.0/detect',
+                        url='https://southeastasia.api.cognitive.microsoft.com/face/v1.0/detect',
                         headers=headers,
                         params=params,
                         data=frame)
@@ -295,6 +328,12 @@ class ConsumerThread(threading.Thread):
         label = "Identifying...."
         eyeWearsList = []
         labels = []
+        is_Update = False
+        ids_list = []
+        gender_list = []
+        age_list = []
+        emotion_list = []
+        curr_faces_count = 0
         while self.capture:
             try:
                 time.sleep(1. / FPS)
@@ -365,9 +404,10 @@ class ConsumerThread(threading.Thread):
                 faces = face_cascade.detectMultiScale(gray, 1.3, 5)
                 faces = sorted(faces, key=lambda x: x[0])
                 curr_faces_count = len(faces)
-                if curr_faces_count != 0:
 
+                if curr_faces_count != 0:
                     loc = []
+                    offset = 0
                     for (x, y, w, h) in faces:
                         loc.append({'x':x,'y':y,'w':w,'h':h})
                         roi_gray = gray[y:y + h, x:x + w]
@@ -376,13 +416,19 @@ class ConsumerThread(threading.Thread):
                         eyes = eye_cascade.detectMultiScale(roi_gray)
                         for (ex,ey,ew,eh) in eyes:
                             cv2.rectangle(roi_color,(ex,ey),(ex+ew,ey+eh),(0,255,0),2)
+                        if is_Update == False:
+                            ids_list.append(int(time.time())+offset)
+                            offset += 1
+
                     if azItem != None and not ("code" in azItem):# and ("faces" in azItem):
                         if len(azItem) != 0:
                             itemSort = sorted(azItem, key=lambda x: x["faceRectangle"]["left"], reverse=True)
-                            index = 0
                             if len(itemSort) == len(loc):# and q_result.qsize() != 0:
+                                index = 0
                                 for facesItem in itemSort:
                                     faceAtrib = facesItem["faceAttributes"]
+                                    gender_list.append(faceAtrib['gender'])
+                                    age_list.append(faceAtrib['age'])
                                     gender = "Gender: %s" % (faceAtrib['gender'])
                                     age = "Age: %s" % (faceAtrib['age'])
                                     cv2.putText(img, gender, (loc[index]['x'] - 1, loc[index]['y'] - 20), font, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
@@ -413,6 +459,7 @@ class ConsumerThread(threading.Thread):
                                                 headLabel = "IsHeadWear : True" if GC_PROB_ENUM[faces[key]] >= 3 else headLabel
                                             if key in ['underExposedLikelihood']:
                                                 ExposeLabel = "IsExposed : False" if GC_PROB_ENUM[faces[key]] >= 3 else ExposeLabel
+                                    emotion_list.append(emoLabel[10:])
                                     cv2.putText(img, emoLabel, (loc[index]['x'] + loc[index]['w'], loc[index]['y'] + 25), font, 0.5, (255,0, 0), 1, cv2.LINE_AA)
                                     cv2.putText(img, headLabel, (loc[index]['x'] + loc[index]['w'], loc[index]['y'] + 40), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
                                     cv2.putText(img, ExposeLabel, (loc[index]['x'] + loc[index]['w'], loc[index]['y'] + 55), font, 0.5, (255, 0, 0), 1, cv2.LINE_AA)
@@ -422,7 +469,8 @@ class ConsumerThread(threading.Thread):
                                                 (faces["boundingPoly"]["vertices"][2]["y"] - faces["boundingPoly"]["vertices"][0]["y"]))
                                         cv2.rectangle(img, (x-w, y), (x, y + h), (255, 0, 255), 2)
                                     index += 1
-
+                    sendToElasticsearch(ids_list, gender_list, age_list, emotion_list,is_Update)
+                    is_Update = True
                     #if frameCount <= FPS:
                     #else:
                     #    frameCount = 1
@@ -431,6 +479,11 @@ class ConsumerThread(threading.Thread):
                     azP.defFirst(True)
                     azItem = None
                     gcItem = None
+                    is_Update = False
+                    ids_list = []
+                    gender_list = []
+                    age_list = []
+                    emotion_list = []
                     #frameCount = 0
                 pygame.surfarray.blit_array(screen, img)
                 screen = pygame.transform.flip(screen, False, True)
