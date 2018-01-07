@@ -22,7 +22,7 @@ face_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haar
 eye_cascade = cv2.CascadeClassifier('./git/opencv/opencv/data/haarcascades/haarcascade_eye.xml')
 font = cv2.FONT_HERSHEY_SIMPLEX
 
-DEVICE = '/dev/video1'
+DEVICE = '/dev/video0'
 SIZE = (640, 480)
 #SIZE = (1280,720)
 
@@ -217,11 +217,13 @@ class labelProducerThread(threading.Thread):
                         alert = False
                         message = {"Alert":0}
                     messageJson = json.dumps(message)
+                    print("*****************Send to Raspbery PI ----------------------->" + messageJson)
                     requests.post(
                         url='https://309d5021.ngrok.io/robberyDetection/api/v1.0/notify',
                         headers={'Content-Type': 'application/json'},
                         data=messageJson)
                     result = [headWearsList, eyeWearsList, coversList, riskList, tagsList]
+                    print("################Send from Raspbery PI ------------------------------------------------>completed")
                     label_q_result.put(result)
             except Exception as e:
                 print(e)
@@ -229,16 +231,12 @@ class labelProducerThread(threading.Thread):
         return
 
 class azProducerThread(threading.Thread):
-    isFirst = True
 
     def __init__(self, group=None, target=None, name=None,
                  args=(), kwargs=None, verbose=None):
         super(azProducerThread, self).__init__()
         self.target = target
         self.name = name
-
-    def defFirst(self,val):
-       self.isFirst = val
 
     def run(self):
         while True:
@@ -255,29 +253,19 @@ class azProducerThread(threading.Thread):
                     data = response.json()
                 except Exception as e:
                     print("[Errno {0}] {1}".format(e.errno, e.strerror))
-                if not self.isFirst:
-                    az_q_result.put(data)
-                    logging.debug('Putting ' + str(data)
-                                  + ' : ' + str(az_q_result.qsize()) + ' items in q_result')
-                else:
-                    #print("First Message ignored")
-                    self.isFirst = False
-                    #print(az_q_result.qsize())
-                #time.sleep(random.random())
+                az_q_result.put(data)
+                #logging.debug('Putting ' + str(data)
+                #                  + ' : ' + str(az_q_result.qsize()) + ' items in q_result')
         return
 
 
 class gcProducerThread(threading.Thread):
-    isFirst = True
 
     def __init__(self, group=None, target=None, name=None,
                  args=(), kwargs=None, verbose=None):
         super(gcProducerThread, self).__init__()
         self.target = target
         self.name = name
-
-    def defFirst(self,val):
-       self.isFirst = val
 
     def run(self):
         while True:
@@ -295,15 +283,7 @@ class gcProducerThread(threading.Thread):
                     #print(data['responses'][0]['faceAnnotations'][0])
                 except Exception as e:
                     print("[Errno {0}] {1}".format(e.errno, e.strerror))
-                if not self.isFirst:
-                    gc_q_result.put(data)
-                else:
-                    #print("First Message ignored")
-                    self.isFirst = False
-                    #print(gc_q_result.qsize())
-                #logging.debug('Putting ' + str(data)
-                #              + ' : ' + str(q_result.qsize()) + ' items in q_result')
-                #time.sleep(random.random())
+                gc_q_result.put(data)
         return
 
 class ConsumerThread(threading.Thread):
@@ -375,13 +355,13 @@ class ConsumerThread(threading.Thread):
                 if not az_q_result.empty():
                     # print("count:"+str(q_result.qsize()))
                     azItem = az_q_result.get()
-                    logging.debug('Getting ' + str(azItem)
+                    logging.debug('Getting from Azure ' + str(azItem)
                                   + ' : ' + str(az_q_result.qsize()) + ' items in az_q_result')
 
                 if not gc_q_result.empty():
                     # print("count:"+str(q_result.qsize()))
                     gcItem = gc_q_result.get()
-                    logging.debug('Getting ' + str(gcItem)
+                    logging.debug('Getting from GC ' + str(gcItem)
                                   + ' : ' + str(gc_q_result.qsize()) + ' items in gc_q_result')
                     #Context
                     labelList = gcItem["responses"][0]
@@ -476,7 +456,6 @@ class ConsumerThread(threading.Thread):
                     #    frameCount = 1
                 else:
                     label = "Identifying...."
-                    azP.defFirst(True)
                     azItem = None
                     gcItem = None
                     is_Update = False
