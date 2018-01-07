@@ -314,6 +314,8 @@ class ConsumerThread(threading.Thread):
         age_list = []
         emotion_list = []
         curr_faces_count = 0
+        is_Capturing = False
+        prev_faces_count = 0
         while self.capture:
             try:
                 time.sleep(1. / FPS)
@@ -384,8 +386,18 @@ class ConsumerThread(threading.Thread):
                 faces = face_cascade.detectMultiScale(gray, 1.3, 5)
                 faces = sorted(faces, key=lambda x: x[0])
                 curr_faces_count = len(faces)
-
                 if curr_faces_count != 0:
+                    if prev_faces_count != curr_faces_count and is_Capturing == False:
+                        is_Capturing = True
+                    elif prev_faces_count == curr_faces_count and is_Capturing == True:
+                        is_Capturing = True
+                    else:
+                        is_Capturing = False
+                else:
+                    is_Capturing = False
+                if is_Capturing:
+                    prev_faces_count = curr_faces_count
+                    is_Capturing = True
                     loc = []
                     offset = 0
                     for (x, y, w, h) in faces:
@@ -463,6 +475,7 @@ class ConsumerThread(threading.Thread):
                     gender_list = []
                     age_list = []
                     emotion_list = []
+                    prev_faces_count = 0
                     #frameCount = 0
                 pygame.surfarray.blit_array(screen, img)
                 screen = pygame.transform.flip(screen, False, True)
